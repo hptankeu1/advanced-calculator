@@ -10,10 +10,11 @@ from app.exceptions import HistoryError
 
 def format_decimal(value: Decimal) -> str:
     """Render a Decimal without exponent noise or trailing zeros (e.g. 2.50 -> 2.5)."""
+    if value == 0:
+        return "0"  # avoids printing "-0"
     if value == value.to_integral_value() and abs(value) < Decimal("1e28"):
         return str(value.quantize(Decimal(1)))
-    text = format(value.normalize(), "f")
-    return text
+    return format(value.normalize(), "f")
 
 
 @dataclass
@@ -36,9 +37,9 @@ class Calculation:
         """Serialize to plain strings (used for CSV and mementos)."""
         return {
             "operation": self.operation,
-            "operand1": str(self.operand1),
-            "operand2": str(self.operand2),
-            "result": str(self.result),
+            "operand1": format_decimal(self.operand1),
+            "operand2": format_decimal(self.operand2),
+            "result": format_decimal(self.result),
             "timestamp": self.timestamp.isoformat(),
         }
 
@@ -46,7 +47,7 @@ class Calculation:
     def from_dict(cls, data: Dict[str, Any]) -> "Calculation":
         """Rebuild a Calculation from a dict produced by `to_dict` (or a CSV row)."""
         try:
-            return cls(
+            calc = cls(
                 operation=str(data["operation"]),
                 operand1=Decimal(str(data["operand1"])),
                 operand2=Decimal(str(data["operand2"])),
@@ -57,3 +58,8 @@ class Calculation:
             raise HistoryError(f"Missing field in calculation data: {exc}") from exc
         except (InvalidOperation, ValueError) as exc:
             raise HistoryError(f"Invalid calculation data: {data}") from exc
+
+        # Empty CSV cells come back as "nan", which Decimal accepts: reject them.
+        if not all(v.is_finite() for v in (calc.operand1, calc.operand2, calc.result)):
+            raise HistoryError(f"Invalid calculation data: {data}")
+        return calc

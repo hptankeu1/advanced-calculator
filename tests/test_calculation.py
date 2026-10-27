@@ -51,6 +51,7 @@ def test_from_dict_missing_field():
     [
         {"operation": "add", "operand1": "x", "operand2": "1", "result": "1", "timestamp": "2026-01-01"},
         {"operation": "add", "operand1": "1", "operand2": "1", "result": "2", "timestamp": "not a date"},
+        {"operation": "add", "operand1": "nan", "operand2": "1", "result": "2", "timestamp": "2026-01-01"},
     ],
 )
 def test_from_dict_invalid_values(bad):
@@ -62,6 +63,7 @@ def test_from_dict_invalid_values(bad):
     "value, expected",
     [
         (Decimal("5"), "5"),
+        (Decimal("-0"), "0"),
         (Decimal("5.000"), "5"),
         (Decimal("2.50"), "2.5"),
         (Decimal("-0.125"), "-0.125"),
