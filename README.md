@@ -2,13 +2,15 @@
 
 ![CI](https://github.com/hptankeu1/advanced-calculator/actions/workflows/python-app.yml/badge.svg)
 
-A command-line calculator written in Python. It supports ten arithmetic operations, undo/redo, persistent history saved with pandas, configurable logging, and settings loaded from a `.env` file. The code is organized around three design patterns:
+A command-line calculator written in Python. It supports ten arithmetic operations, undo/redo, persistent history saved with pandas, a queue of operations to run in batch, color-coded output, configurable logging, and settings loaded from a `.env` file. The code is organized around five design patterns:
 
-| Pattern  | Where                       | Purpose                                                    |
-|----------|-----------------------------|------------------------------------------------------------|
-| Factory  | `app/operations.py`         | `OperationFactory` creates the right operation from its name |
-| Memento  | `app/calculator_memento.py` | Snapshots of history that make undo/redo possible          |
-| Observer | `app/history.py`            | `LoggingObserver` and `AutoSaveObserver` react to each new calculation |
+| Pattern   | Where                       | Purpose                                                    |
+|-----------|-----------------------------|------------------------------------------------------------|
+| Factory   | `app/operations.py`         | `OperationFactory` creates the right operation from its name |
+| Memento   | `app/calculator_memento.py` | Snapshots of history that make undo/redo possible          |
+| Observer  | `app/history.py`            | `LoggingObserver` and `AutoSaveObserver` react to each new calculation |
+| Decorator | `app/help_menu.py`          | The help menu is built by stacking decorators; it reads the operation registry, so new operations appear automatically |
+| Command   | `app/commands.py`           | Every request is an object run by a `CommandInvoker`, so operations can be parameterized and queued |
 
 ## Features
 
@@ -19,6 +21,9 @@ A command-line calculator written in Python. It supports ten arithmetic operatio
 - **Logging** of every calculation, warning and error to a log file
 - **Validation** with clear messages: non-numeric input, values over the configured maximum, division by zero, even roots of negative numbers, etc.
 - **Precise math** using Python's `Decimal`, rounded to a configurable number of places
+- **Dynamic help menu** generated from the registered operations and commands
+- **Color-coded output**: green results, red errors, yellow warnings, cyan info, magenta headers
+- **Operation queue**: queue several calculations and run them together
 
 ## Project structure
 
@@ -30,7 +35,10 @@ advanced-calculator/
 │   ├── calculator_config.py    # Loads and validates .env settings
 │   ├── calculator_memento.py   # Memento for undo/redo
 │   ├── calculator_repl.py      # Command-line interface (REPL)
+│   ├── colors.py               # Color-coded output (colorama)
+│   ├── commands.py             # Command pattern: commands, invoker, queue
 │   ├── exceptions.py           # CalculatorError, ValidationError, OperationError, ...
+│   ├── help_menu.py            # Decorator pattern: dynamic help menu
 │   ├── history.py              # LoggingObserver, AutoSaveObserver
 │   ├── input_validators.py     # Number validation
 │   ├── logger.py               # Logger class
@@ -146,8 +154,58 @@ Error: Division by zero is not allowed
 | `redo` | Redo the last undone change |
 | `save` | Save history to the CSV file |
 | `load` | Load history from the CSV file |
+| `queue <op> <a> <b>` | Add an operation to the queue without running it |
+| `queue` | List queued operations |
+| `queue clear` | Empty the queue |
+| `run` | Execute every queued operation in order |
 | `help` | Show available commands |
 | `exit` | Save (if auto-save is on) and quit |
+
+### Queuing operations (Command pattern)
+
+Each line you type becomes a `Command` object executed by a `CommandInvoker`. Because a calculation is an object holding its operation and operands, it can be stored and run later:
+
+```
+Enter command: queue add 2 3
+Queued: add 2 3 (1 pending)
+Enter command: queue root 81 4
+Queued: root 81 4 (2 pending)
+Enter command: run
+Ran 2 queued operation(s):
+add 2 3 -> Result: 5
+root 81 4 -> Result: 3
+```
+
+### Colors
+
+Output is color-coded: **green** for results and successful actions, **red** for errors, **yellow** for warnings, **cyan** for information and **magenta** for headers. Colors turn on automatically in a terminal and off when output is piped. Override with:
+
+```bash
+CALCULATOR_COLOR=false python main.py   # force off (true forces on)
+NO_COLOR=1 python main.py               # standard way to disable colors
+```
+
+### Adding a new operation
+
+Decorate a subclass of `Operation`. The factory registers it, the REPL accepts it as a command, and the help menu lists it. Nothing else needs to change:
+
+```python
+from app.operations import Operation, OperationFactory
+
+@OperationFactory.register("avg", "average of a and b")
+class Average(Operation):
+    def _compute(self, a, b):
+        return (a + b) / 2
+```
+
+The help menu is assembled with the Decorator pattern in `app/help_menu.py`:
+
+```python
+menu = BaseHelpMenu()                         # title
+menu = OperationsHelpDecorator(menu)          # + operations, read live from the factory
+menu = CommandsHelpDecorator(menu, commands)  # + REPL commands
+menu = ColorHelpDecorator(menu, colors)       # + colors
+```
 
 ## Testing
 
