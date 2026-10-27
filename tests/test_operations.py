@@ -129,3 +129,39 @@ def test_factory_register_new_operation():
 def test_factory_register_rejects_non_operation():
     with pytest.raises(TypeError):
         OperationFactory.register_operation("bad", str)
+
+
+# --- Registration decorator --------------------------------------------------
+def test_register_decorator_adds_operation_with_description():
+    @OperationFactory.register("hypot", "sqrt(a^2 + b^2)", "hyp")
+    class Hypotenuse(Operation):
+        def _compute(self, a, b):
+            return (a * a + b * b).sqrt()
+
+    try:
+        assert Hypotenuse.name == "hypot"
+        assert Hypotenuse.symbol == "hyp"
+        assert OperationFactory.describe_operations()["hypot"] == "sqrt(a^2 + b^2)"
+        assert OperationFactory.create_operation("hypot").execute(D(3), D(4)) == 5
+    finally:
+        OperationFactory.unregister_operation("hypot")
+    assert "hypot" not in OperationFactory.available_operations()
+
+
+def test_register_decorator_without_description_keeps_defaults():
+    @OperationFactory.register("first")
+    class First(Operation):
+        def _compute(self, a, b):
+            return a
+
+    try:
+        assert First.description == ""
+        assert First.symbol == ""
+    finally:
+        OperationFactory.unregister_operation("first")
+
+
+def test_every_builtin_operation_has_a_description():
+    descriptions = OperationFactory.describe_operations()
+    assert len(descriptions) == 10
+    assert all(descriptions.values())
