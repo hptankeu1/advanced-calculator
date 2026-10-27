@@ -171,3 +171,61 @@ def test_default_calculator_created(monkeypatch, tmp_path):
     monkeypatch.setenv("CALCULATOR_HISTORY_DIR", str(tmp_path / "h"))
     repl = CalculatorREPL(input_func=lambda p="": "exit", output_func=lambda s: None)
     assert isinstance(repl.calculator, Calculator)
+
+
+# --- Command queue, colors and dynamic help ---------------------------------
+def test_queue_and_run(calculator):
+    out = run_repl(calculator, [
+        "queue", "queue add 1 2", "queue power 2 3", "queue", "run", "history", "exit",
+    ])
+    assert "Queue is empty" in out
+    assert "Queued: add 1 2 (1 pending)" in out
+    assert "1. add 1 2\n2. power 2 3" in out
+    assert "Ran 2 queued operation(s):" in out
+    assert "add 1 2 -> Result: 3" in out
+    assert "power 2 3 -> Result: 8" in out
+    assert "2. power(2, 3) = 8" in out
+
+
+def test_queue_clear(calculator):
+    out = run_repl(calculator, ["queue add 1 2", "queue clear", "run", "exit"])
+    assert "Queue cleared (1 removed)" in out
+    assert calculator.history == []
+
+
+@pytest.mark.parametrize("line", ["queue add 1", "queue nope 1 2", "queue clear now"])
+def test_queue_usage_errors(calculator, line):
+    assert "Usage: queue <operation> <a> <b>" in run_repl(calculator, [line, "exit"])
+
+
+def test_colored_output():
+    from colorama import Fore
+    from app.calculator_config import CalculatorConfig
+    import tempfile, pathlib
+
+    with tempfile.TemporaryDirectory() as tmp:
+        calc = Calculator(CalculatorConfig(base_dir=pathlib.Path(tmp), auto_save=False))
+        inputs = iter(["add 2 2", "divide 1 0", "undo", "undo", "bogus", "exit"])
+        out = []
+        CalculatorREPL(calc, lambda p="": next(inputs), out.append, use_color=True).run()
+    text = "\n".join(out)
+    assert f"{Fore.GREEN}Result: 4" in text
+    assert f"{Fore.RED}Error: Division by zero" in text
+    assert f"{Fore.YELLOW}Nothing to undo" in text
+    assert f"{Fore.RED}Unknown command: 'bogus'" in text
+
+
+def test_help_shows_newly_registered_operation(calculator):
+    from app.operations import Operation, OperationFactory
+
+    @OperationFactory.register("avg", "average of a and b")
+    class Average(Operation):
+        def _compute(self, a, b):
+            return (a + b) / 2
+
+    try:
+        out = run_repl(calculator, ["help", "avg 4 8", "exit"])
+        assert "avg" in out and "average of a and b" in out
+        assert "Result: 6" in out
+    finally:
+        OperationFactory.unregister_operation("avg")
