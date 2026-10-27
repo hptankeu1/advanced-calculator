@@ -47,7 +47,7 @@ class Calculation:
     def from_dict(cls, data: Dict[str, Any]) -> "Calculation":
         """Rebuild a Calculation from a dict produced by `to_dict` (or a CSV row)."""
         try:
-            return cls(
+            calc = cls(
                 operation=str(data["operation"]),
                 operand1=Decimal(str(data["operand1"])),
                 operand2=Decimal(str(data["operand2"])),
@@ -58,3 +58,8 @@ class Calculation:
             raise HistoryError(f"Missing field in calculation data: {exc}") from exc
         except (InvalidOperation, ValueError) as exc:
             raise HistoryError(f"Invalid calculation data: {data}") from exc
+
+        # Empty CSV cells come back as "nan", which Decimal accepts: reject them.
+        if not all(v.is_finite() for v in (calc.operand1, calc.operand2, calc.result)):
+            raise HistoryError(f"Invalid calculation data: {data}")
+        return calc
