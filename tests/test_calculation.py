@@ -62,6 +62,7 @@ def test_from_dict_invalid_values(bad):
     "value, expected",
     [
         (Decimal("5"), "5"),
+        (Decimal("-0"), "0"),
         (Decimal("5.000"), "5"),
         (Decimal("2.50"), "2.5"),
         (Decimal("-0.125"), "-0.125"),
